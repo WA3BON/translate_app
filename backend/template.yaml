@@ -1,0 +1,82 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  Translate App Backend
+  - Japanese to Spanish translation
+  - Usage tracking with DynamoDB
+
+Globals:
+  Function:
+    Runtime: python3.13
+    Timeout: 10
+    MemorySize: 256
+    Tracing: Active
+    Environment:
+      Variables:
+        TABLE_NAME: !Ref TranslateUsageTable
+        SOURCE_LANG: ja
+        TARGET_LANG: es
+
+Resources:
+
+  ################################
+  # API Gateway
+  ################################
+  TranslateApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      Name: translate-api
+      StageName: prod
+      Cors:
+        AllowMethods: "'POST,OPTIONS'"
+        AllowHeaders: "'Content-Type'"
+        AllowOrigin: "'*'"
+
+  ################################
+  # Lambda Function
+  ################################
+  TranslateFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: translate-handler
+      Handler: src.app.lambda_handler
+      Runtime: python3.13
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref TranslateUsageTable
+        - Statement:
+            - Effect: Allow
+              Action:
+                - translate:TranslateText
+              Resource: "*"
+      Events:
+        TranslateApiEvent:
+          Type: Api
+          Properties:
+            RestApiId: !Ref TranslateApi
+            Path: /translate
+            Method: post
+
+  ################################
+  # DynamoDB Table
+  ################################
+  TranslateUsageTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: TranslateUsageTable
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: userId
+          AttributeType: S
+        - AttributeName: month
+          AttributeType: S
+      KeySchema:
+        - AttributeName: userId
+          KeyType: HASH
+        - AttributeName: month
+          KeyType: RANGE
+
+Outputs:
+  ApiUrl:
+    Description: API Gateway endpoint URL
+    Value: !Sub "https://${TranslateApi}.execute-api.${AWS::Region}.amazonaws.com/prod/translate"
